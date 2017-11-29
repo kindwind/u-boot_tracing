@@ -16,7 +16,7 @@
  * Startup Code (reset vector)
  *
  *************************************************************************/
-
+// Makes symbol visible to the linker. Same as .global
 .globl	_start
 _start:
 #ifdef CONFIG_ENABLE_ARM_SOC_BOOT0_HOOK
@@ -28,13 +28,25 @@ _start:
 #include <asm/arch/boot0.h>
 #else
 	b	reset
+	// Branch.
+	// B{cond}{.W} label
+	// a PC-relative expression: reset
 #endif
 
-	.align 3
+// .align {alignment} {, fill} {, max}
+// Byte align the following code to alignment byte boundary (default=4).
+// Fill skipped bytes with fill (default=0 or NOP).
+// If the number of bytes skipped is greater than max, then don't align (default=alignment).
+	.align 3	// 3 byte alignment
 
 .globl	_TEXT_BASE
 _TEXT_BASE:
-	.quad	CONFIG_SYS_TEXT_BASE
+// .quad expr {, …}
+// Define bignum expr (break at 8bit increments)
+// .byte 0x12, 2, 3 will compile to three bytes 12 02 03
+// .quad 0x123456789ABCDEF0, 2, 3 will compile to 24 bytes:
+// F0 DE BC 9A 78 56 34 12 02 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00
+	.quad	CONFIG_SYS_TEXT_BASE	// compile to quad word (4*2 bytes)
 
 /*
  * These are defined in the linker script.
@@ -64,27 +76,66 @@ save_boot_params_ret:
 	 */
 pie_fixup:
 	adr	x0, _start		/* x0 <- Runtime value of _start */
+	// Form PC-relative address adds an immediate value to the PC value to form a PC-relative address, and writes the result to the destination register.
+	// destination register: x0
+	// PC-relative address: _start
 	ldr	x1, _TEXT_BASE		/* x1 <- Linked value of _start */
+	// Load register. The address is an offset from a base register.
+	// the register to load or store: x1
+	// a symbol defined by the FIELD directive: _TEXT_BASE
+	// label specifies an offset from the base register which is defined using the MAP directive
 	sub	x9, x0, x1		/* x9 <- Run-vs-link offset */
+	// subtract the value of x1 from the value in x0
+	// destination register: x9
+	// first operand: x0
+	// second operand: x1
 	adr	x2, __rel_dyn_start	/* x2 <- Runtime &__rel_dyn_start */
 	adr	x3, __rel_dyn_end	/* x3 <- Runtime &__rel_dyn_end */
 pie_fix_loop:
 	ldp	x0, x1, [x2], #16	/* (x0, x1) <- (Link location, fixup) */
+	// Load Pair of Registers calculates an address from a base register value and an immediate offset, loads two 32-bit words or two 64-bit doublewords from memory, and writes them to two registers.
+	// name of the first general-purpose register to be transferred: x0
+	// name of the second general-purpose register to be transferred: x1
+	// name of the general-purpose base register: x2
+	// the signed immediate byte offset: #16
 	ldr	x4, [x2], #8		/* x4 <- addend */
+	// Load Register (immediate) loads a word or doubleword from memory and writes it to a register. The address that is used for the load is calculated from a base register and an immediate offset.
+	// name of the general-purpose register to be transferred: x4
+	// name of the general-purpose base register: x2
+	// the optional positive immediate byte offset: #8
 	cmp	w1, #1027		/* relative fixup? */
+	// Compare (immediate) subtracts an optionally-shifted immediate value from a register value. It updates the condition flags based on the result, and discards the result.
+	// name of the source general-purpose register: w1
+	// an unsigned immediate: #1027
 	bne	pie_skip_reloc
 	/* relative fix: store addend plus offset at dest location */
 	add	x0, x0, x9
+	// adds the values in x0 and x0.
+	// the destination register: x0
+	// the register holding the first operand: x0
+	// a flexible second operand: x9
 	add	x4, x4, x9
 	str	x4, [x0]
+	// Store with immediate offset, pre-indexed immediate offset, or post-indexed immediate offset.
+	// the general-purpose register to store: x4
+	// the general-purpose register on which the memory address is based: x0
 pie_skip_reloc:
 	cmp	x2, x3
 	b.lo	pie_fix_loop
+	// Branch conditionally.
+	// B.cond label
+	// Condition:
+	//	CS or HS	C set	: Higher or same (unsigned >= )
+	//	CC or LO	C clear	: Lower (unsigned < )
+	// a PC-relative expression: pie_fix_loop
 pie_fixup_done:
 #endif
 
 #ifdef CONFIG_SYS_RESET_SCTRL
 	bl reset_sctrl
+	// Branch with Link.
+	// The BL instruction causes a branch to label, and copies the address of the next instruction into LR (R14, the link register).
+	// a PC-relative expression: reset_sctrl 
 #endif
 	/*
 	 * Could be EL3/EL2/EL1, Initial State:
@@ -93,6 +144,7 @@ pie_fixup_done:
 	adr	x0, vectors
 	switch_el x1, 3f, 2f, 1f
 3:	msr	vbar_el3, x0
+	// 
 	mrs	x0, scr_el3
 	orr	x0, x0, #0xf			/* SCR_EL3.NS|IRQ|FIQ|EA */
 	msr	scr_el3, x0
